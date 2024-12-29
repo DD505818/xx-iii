@@ -1,0 +1,11 @@
+{
+  "name": "∆oHxt Development Container",
+  "image": "mcr.microsoft.com/vscode/devcontainers/javascript-node:0-18",
+  "extensions": [
+    "ms-vscode.node-debug2",
+    "dbaeumer.vscode-eslint"
+  ],
+  "settings": {
+    "terminal.integrated.shell.linux": "/bin/bash"
+  }
+}

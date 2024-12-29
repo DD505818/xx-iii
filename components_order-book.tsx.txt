@@ -1,0 +1,130 @@
+"use client"
+
+import { useEffect, useCallback, useMemo } from 'react'
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { useVirtualizer } from '@tanstack/react-virtual'
+import { useWebSocket } from '@/hooks/use-websocket'
+
+interface OrderBookLevel {
+  price: number
+  size: number
+  total: number
+  side: 'bid' | 'ask'
+}
+
+function OrderBookRow({ level, maxTotal }: { level: OrderBookLevel; maxTotal: number }) {
+  const percentFill = (level.total / maxTotal) * 100
+  const colorClass = level.side === 'bid' ? 'bg-green-500/20' : 'bg-red-500/20'
+
+  return (
+    <div className="grid grid-cols-3 text-sm py-0.5 relative">
+      <div
+        className={`absolute top-0 bottom-0 ${colorClass} z-0`}
+        style={{ width: `${percentFill}%`, right: level.side === 'bid' ? 0 : 'auto', left: level.side === 'ask' ? 0 : 'auto' }}
+      />
+      <div className="z-10 text-right px-2">{level.size.toFixed(4)}</div>
+      <div className={`z-10 text-right px-2 font-mono ${level.side === 'bid' ? 'text-green-400' : 'text-red-400'}`}>
+        {level.price.toFixed(2)}
+      </div>
+      <div className="z-10 text-right px-2">{level.total.toFixed(4)}</div>
+    </div>
+  )
+}
+
+export function OrderBook() {
+  const { data, status } = useWebSocket('wss://api.exchange.com/orderbook')
+  
+  const { bids, asks } = useMemo(() => {
+    if (!data) return { bids: [], asks: [] }
+    
+    let bidTotal = 0
+    let askTotal = 0
+    
+    const bids = data.bids.map((bid: [number, number]) => {
+      bidTotal += bid[1]
+      return { price: bid[0], size: bid[1], total: bidTotal, side: 'bid' as const }
+    })
+    
+    const asks = data.asks.map((ask: [number, number]) => {
+      askTotal += ask[1]
+      return { price: ask[0], size: ask[1], total: askTotal, side: 'ask' as const }
+    }).reverse()
+    
+    return { bids, asks }
+  }, [data])
+
+  const maxTotal = useMemo(() => {
+    const maxBid = bids[bids.length - 1]?.total || 0
+    const maxAsk = asks[0]?.total || 0
+    return Math.max(maxBid, maxAsk)
+  }, [bids, asks])
+
+  const parentRef = useCallback((node: HTMLDivElement) => {
+    if (node !== null) {
+      const resizeObserver = new ResizeObserver(() => {
+        // Handle resize
+      })
+      resizeObserver.observe(node)
+      return () => resizeObserver.disconnect()
+    }
+  }, [])
+
+  const rowVirtualizer = useVirtualizer({
+    count: bids.length + asks.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 24,
+    overscan: 10,
+  })
+
+  return (
+    <Card className="glass-panel h-full">
+      <CardHeader>
+        <CardTitle className="text-sm font-medium flex items-center justify-between">
+          Order Book
+          <span className={`h-2 w-2 rounded-full ${status === 'open' ? 'bg-green-500' : 'bg-red-500'}`} />
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-3 text-xs text-muted-foreground mb-2">
+          <div className="text-right px-2">Size</div>
+          <div className="text-right px-2">Price</div>
+          <div className="text-right px-2">Total</div>
+        </div>
+        <div
+          ref={parentRef}
+          className="h-[400px] overflow-auto gpu-accelerated"
+        >
+          <div
+            style={{
+              height: `${rowVirtualizer.getTotalSize()}px`,
+              width: '100%',
+              position: 'relative',
+            }}
+          >
+            {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+              const item = virtualRow.index < asks.length
+                ? asks[virtualRow.index]
+                : bids[virtualRow.index - asks.length]
+              
+              return (
+                <div
+                  key={virtualRow.index}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    transform: `translateY(${virtualRow.start}px)`,
+                  }}
+                >
+                  <OrderBookRow level={item} maxTotal={maxTotal} />
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
