@@ -30,4 +30,7 @@ jobs:
         run: npm run build
 
       - name: Deploy to production
-        run: echo "Deployment step goes here"
+        uses: actions/deploy@v1
+        with:
+          api_key: ${{ secrets.DEPLOY_API_KEY }}
+          environment: production
